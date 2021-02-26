@@ -23,6 +23,14 @@ bool isCompoundCommand( char inputStr[] ){
     }
 }
 
+void parseBasicCommand(){
+
+}
+
+void parseCompoundCommand(){
+
+}
+
 void execBasicComm(){
 
 }
@@ -83,15 +91,16 @@ int main(int argc, char *argv[])
             inputLine[strcspn(inputLine, "\n")] = '\0';
             printf("\n");
 
-            bool flagCompoundCommand = isCompoundCommand(inputLine);
 
             if( strcmp( inputLine, "exit") == 0){
                 printf( "DEBUG: Exit entered\n");
                 break;
             }
 
+            bool flagCompoundCommand = isCompoundCommand(inputLine);
+
             // execute the basic command
-            else if( flagCompoundCommand == false){
+            if( flagCompoundCommand == false){
                 printf("DEBUG: basic\n");
 
             }

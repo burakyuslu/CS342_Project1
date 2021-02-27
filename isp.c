@@ -9,6 +9,10 @@
 const int MODE_NORMAL = 1;
 const int MODE_TAPPED = 2;
 
+// constants for pipe
+const int PIPE_READ_END = 0;
+const int PIPE_WRITE_END = 1;
+
 /** 
  * Returns whether the entered string is a compound command or not.
  * Commands containing | are compound commands.
@@ -23,19 +27,132 @@ bool isCompoundCommand( char inputStr[] ){
     }
 }
 
-void parseBasicCommand(){
+void parseBasicCommand( char* rawStr, char** processedStrArr){
+    // if not reached the end of the rawStr
+    while (*rawStr != '\0') {
+
+        // go to the next word/non-trivial character
+        while (*rawStr == '\t' || *rawStr == ' ' ||  *rawStr == '\n'){
+            *rawStr = '\0';
+            rawStr++;
+        }
+        
+        // save the reached argument to the argument array
+        *processedStrArr = rawStr;  
+        processedStrArr++;
+
+        // skip the argument
+        while (*rawStr != '\0' && *rawStr != ' ' && *rawStr != '\t' && *rawStr != '\n'){
+            rawStr++;             
+        }
+    }
+
+    // marks the end of the argument list
+    *processedStrArr = '\0';
+}
+
+void parseCompoundCommand(char* rawStr, char** processedStrArr1, char** processedStrArr2){
+    // process first command
+    // if not reached the end of the rawStr
+    while (*rawStr != '\0' && *rawStr != '|') {
+
+        // go to the next word/non-trivial character
+        while (*rawStr == '\t' || *rawStr == ' ' ||  *rawStr == '\n'){
+            *rawStr = '\0';
+            rawStr++;
+        }
+        
+        // if reached the end of first command, break
+        if( *rawStr == '|'){
+            break;
+        }
+
+        // save the reached argument to the argument array
+        *processedStrArr1 = rawStr;  
+        processedStrArr1++;
+
+        // skip the argument
+        while (*rawStr != '\0' && *rawStr != ' ' && *rawStr != '\t' && *rawStr != '\n'){
+            rawStr++;             
+        }
+    }
+
+    // marks the end of the argument list
+    *processedStrArr1 = '\0';
+
+    rawStr++; // skip the |
+    // process second command
+    // if not reached the end of the rawStr
+    while (*rawStr != '\0') {
+
+        // go to the next word/non-trivial character
+        while (*rawStr == '\t' || *rawStr == ' ' ||  *rawStr == '\n'){
+            *rawStr = '\0';
+            rawStr++;
+        }
+        
+        // save the reached argument to the argument array
+        *processedStrArr2 = rawStr;  
+        processedStrArr2++;
+
+        // skip the argument
+        while (*rawStr != '\0' && *rawStr != ' ' && *rawStr != '\t' && *rawStr != '\n'){
+            rawStr++;             
+        }
+    }
+
+    // marks the end of the argument list
+    *processedStrArr2 = '\0';
+}
+
+void execBasicComm(char** commArr){
+
+    if( fork() == 0){
+        if( execvp(*commArr, commArr) < 0) {
+            printf("Basic command execution failed.");
+        }
+        exit(0);
+    }
+    else {
+        // parent waits for child to finish execution
+        wait(NULL);
+    }
 
 }
 
-void parseCompoundCommand(){
+void execCompCommNormal(char** firstCommArr, char** secondCommArr){
 
-}
+    int fd[2];
+    pipe(fd);
 
-void execBasicComm(){
+    // first child
+    if( fork() == 0){
+        close(fd[PIPE_READ_END]);
+        dup2(fd[PIPE_WRITE_END], 1);
 
-}
-
-void execCompCommNormal(){
+        if( execvp(*firstCommArr, firstCommArr)){
+            printf("Execution of the first/left command failed.\n");
+        }
+        close(fd[PIPE_WRITE_END]);
+        exit(0);
+    }
+    // second child
+    else if (fork() == 0){
+        close(fd[PIPE_WRITE_END]);
+        dup2(fd[PIPE_READ_END], 0);
+        if( execvp(*secondCommArr, secondCommArr)){
+            printf("Execution of the second/right command failed.\n");
+            printf( *secondCommArr);
+        }
+        close(fd[PIPE_READ_END]);
+        exit(0);
+    }
+    // parent waits for child tasks to finish execution
+    else{
+        wait(NULL);
+    }
+    close(fd[PIPE_READ_END]);
+    close(fd[PIPE_WRITE_END]);
 
 }
 
@@ -103,16 +220,32 @@ int main(int argc, char *argv[])
             if( flagCompoundCommand == false){
                 printf("DEBUG: basic\n");
 
+                // parse the input into commands & arguments
+                char  *commandArr[64];
+                parseBasicCommand(inputLine, commandArr);
+
+                // execute the command
+                execBasicComm( commandArr);
+
             }
 
             // execute the compound command
             else if( flagCompoundCommand == true){
                 printf("DEBUG: compound\n");
+
+                char *commandArr1[64];
+                char *commandArr2[64];
+
+                parseCompoundCommand(inputLine, commandArr1, commandArr2);
+
+                // execute the command
+                execCompCommNormal( commandArr1, commandArr2);
+
             }
 
         }
 
-        printf( "Exiting program...");
+        printf( "Exiting program... \n");
         return 0;
     }
 

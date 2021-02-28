@@ -1,8 +1,8 @@
+#include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
-#include <sys/types.h>
 #include <string.h>
 
 // constants for mode
@@ -142,7 +142,6 @@ void execCompCommNormal(char** firstCommArr, char** secondCommArr){
         dup2(fd[PIPE_READ_END], 0);
         if( execvp(*secondCommArr, secondCommArr)){
             printf("Execution of the second/right command failed.\n");
-            printf( *secondCommArr);
         }
         close(fd[PIPE_READ_END]);
         exit(0);
@@ -156,7 +155,85 @@ void execCompCommNormal(char** firstCommArr, char** secondCommArr){
 }
 
 void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, int statChar, int statRead, int statWrite ){
+    pid_t parentPid = getpid();
+    pid_t child1Pid;
+    pid_t child2Pid;
 
+    int fd1[2];
+    int fd2[2];
+
+    pipe(fd1);
+    pipe(fd2);
+
+    printf( "DEBUG: CHECKPOINT 1\n");
+    // set the pipe for the first child
+    if( fork() == 0){
+        child1Pid = getpid();
+        // will not use pipe 2
+        close(fd2[PIPE_READ_END]);
+        close(fd2[PIPE_WRITE_END]);
+
+        // will use write end of pipe 1
+        close(fd1[PIPE_READ_END]);
+        dup2(fd1[PIPE_WRITE_END], 1);
+        if( execvp(*firstCommArr, firstCommArr)){
+            printf("Execution of the first/left command failed.\n");
+        }
+        printf( "DEBUG: CHECKPOINT 2\n");
+    }
+    else {
+        // set the pipe for the second child
+        if( fork() == 0){
+            child2Pid = getpid();
+
+            // will not use pipe 1
+            close(fd1[PIPE_READ_END]);
+            close(fd1[PIPE_WRITE_END]);
+
+            // will use read end of pipe 2
+            close(fd2[PIPE_WRITE_END]);
+            dup2(fd2[PIPE_READ_END], 0);
+            if( execvp(*secondCommArr, secondCommArr)){
+                printf("Execution of the second/right command failed.\n");
+            }
+            printf( "DEBUG: CHECKPOINT 3\n");
+        }
+        // set the pipe for the parent
+        else {
+            // will use read end of pipe 1
+            close(fd1[PIPE_WRITE_END]);
+            dup2(fd1[PIPE_READ_END], 0);
+
+            // will use the write end of pipe 2
+            close(fd2[PIPE_READ_END]);
+            dup2(fd2[PIPE_WRITE_END], 1);
+            printf( "DEBUG: CHECKPOINT 4\n");
+        }
+    }
+
+    printf( "DEBUG: CHECKPOINT 5\n");
+    char* buffer[nValue];
+    int readByteCnt;
+    if( getpid() == parentPid){
+        do {
+            // read n bytes & write those bytes to second child
+            readByteCnt = read( fd1[PIPE_READ_END], buffer, nValue);
+            write( fd2[PIPE_WRITE_END], buffer, nValue);
+        } while (readByteCnt > 0);
+    }
+    printf( "DEBUG: CHECKPOINT 6\n");
+
+    if( getpid() == child1Pid){
+        exit(0);
+    }
+    else if ( getpid() == child2Pid){
+        exit(0);
+    }
+
+    close(fd1[PIPE_READ_END]);
+    close(fd1[PIPE_WRITE_END]);
+    close(fd2[PIPE_READ_END]);
+    close(fd2[PIPE_WRITE_END]);
 }
 
 
@@ -249,7 +326,7 @@ int main(int argc, char *argv[])
     }
 
     else if( mode == MODE_TAPPED){
-        
+        printf( "DEBUG: TAPPED\n");
         char inputLine[1024];
         
         printf( "isp$ ");
@@ -281,29 +358,29 @@ int main(int argc, char *argv[])
 
             // execute the compound command
             else if( flagCompoundCommand == true){
-                printf("DEBUG: compound\n");
+
+                printf("DEBUG: main checkpoint 0\n");
 
                 char *commandArr1[64];
                 char *commandArr2[64];
-
-
                 int statCharCnt = 0;
                 int statReadCnt = 0;
                 int statWriteCnt = 0;
+                printf( "DEBUG: main checkpoint 1\n");
 
                 parseCompoundCommand(inputLine, commandArr1, commandArr2);
-
+                
+                printf( "DEBUG: main checkpoint 2\n");
                 // execute the command
                 execCompCommTapped( n, commandArr1, commandArr2, statCharCnt, statReadCnt, statWriteCnt);
+                printf( "DEBUG: main checkpoint 3\n");
 
             }
             printf( "isp$ ");
         }
 
         printf( "Exiting program... \n");
-        return 0;
-        
+        return 0;   
     }
-
     return 0;
 }

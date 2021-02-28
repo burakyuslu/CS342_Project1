@@ -109,7 +109,7 @@ void execBasicComm(char** commArr){
 
     if( fork() == 0){
         if( execvp(*commArr, commArr) < 0) {
-            printf("Basic command execution failed.");
+            printf("Basic command execution failed.\n");
         }
         exit(0);
     }
@@ -153,10 +153,9 @@ void execCompCommNormal(char** firstCommArr, char** secondCommArr){
     }
     close(fd[PIPE_READ_END]);
     close(fd[PIPE_WRITE_END]);
-
 }
 
-void execCompCommTapped(){
+void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, int statChar, int statRead, int statWrite ){
 
 }
 
@@ -250,7 +249,60 @@ int main(int argc, char *argv[])
     }
 
     else if( mode == MODE_TAPPED){
+        
+        char inputLine[1024];
+        
+        printf( "isp$ ");
+        // take inputs from user as long as he did not initiate to exit
+        while( true){
+            fgets(inputLine, 1024, stdin);
+            inputLine[strcspn(inputLine, "\n")] = '\0';
+            printf("\n");
 
+
+            if( strcmp( inputLine, "exit") == 0){
+                printf( "DEBUG: Exit entered\n");
+                break;
+            }
+
+            bool flagCompoundCommand = isCompoundCommand(inputLine);
+
+            // execute the basic command
+            if( flagCompoundCommand == false){
+                printf("DEBUG: basic\n");
+
+                // parse the input into commands & arguments
+                char  *commandArr[64];
+                parseBasicCommand(inputLine, commandArr);
+
+                // execute the command
+                execBasicComm( commandArr);
+            }
+
+            // execute the compound command
+            else if( flagCompoundCommand == true){
+                printf("DEBUG: compound\n");
+
+                char *commandArr1[64];
+                char *commandArr2[64];
+
+
+                int statCharCnt = 0;
+                int statReadCnt = 0;
+                int statWriteCnt = 0;
+
+                parseCompoundCommand(inputLine, commandArr1, commandArr2);
+
+                // execute the command
+                execCompCommTapped( n, commandArr1, commandArr2, statCharCnt, statReadCnt, statWriteCnt);
+
+            }
+            printf( "isp$ ");
+        }
+
+        printf( "Exiting program... \n");
+        return 0;
+        
     }
 
     return 0;

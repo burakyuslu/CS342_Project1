@@ -27,6 +27,10 @@ bool isCompoundCommand( char inputStr[] ){
     }
 }
 
+/** 
+ * Parses a basic (non-compound) command. 
+ * The command and arguments are parse as an array into processedStrArr.
+ */
 void parseBasicCommand( char* rawStr, char** processedStrArr){
     // if not reached the end of the rawStr
     while (*rawStr != '\0') {
@@ -51,6 +55,11 @@ void parseBasicCommand( char* rawStr, char** processedStrArr){
     *processedStrArr = '\0';
 }
 
+/** 
+ * Parses a compound command. 
+ * Returns the command and arguments as arrays.
+ * First array is the left command and second array is the right command.
+ */
 void parseCompoundCommand(char* rawStr, char** processedStrArr1, char** processedStrArr2){
     // process first command
     // if not reached the end of the rawStr
@@ -105,6 +114,9 @@ void parseCompoundCommand(char* rawStr, char** processedStrArr1, char** processe
     *processedStrArr2 = '\0';
 }
 
+/**
+ * Using execvp syscall executes a basic command.
+ */
 void execBasicComm(char** commArr){
 
     if( fork() == 0){
@@ -120,6 +132,11 @@ void execBasicComm(char** commArr){
 
 }
 
+/**
+ * Executes comppound commands.
+ * The data transfer is done through a pipe from first child process to the other.
+ * Used while in normal mode.
+ */
 void execCompCommNormal(char** firstCommArr, char** secondCommArr){
 
     int fd[2];
@@ -154,6 +171,12 @@ void execCompCommNormal(char** firstCommArr, char** secondCommArr){
     close(fd[PIPE_WRITE_END]);
 }
 
+/**
+ * Executes comppound commands.
+ * The data transfer is done through the first child to parent to the second child.
+ * Used while in tapped mode.
+ * Parent reads and writes n-bytes at a time, where n is an command line argument.
+ */
 void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, int statChar, int statRead, int statWrite ){
     pid_t parentPid = getpid();
     pid_t child1Pid;
@@ -165,7 +188,9 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
     pipe(fd1);
     pipe(fd2);
 
-    printf( "DEBUG: CHECKPOINT 1\n");
+    // close(fd1[PIPE_WRITE_END]);
+    // close(fd2[PIPE_READ_END]);
+
     // set the pipe for the first child
     if( fork() == 0){
         child1Pid = getpid();
@@ -176,10 +201,11 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
         // will use write end of pipe 1
         close(fd1[PIPE_READ_END]);
         dup2(fd1[PIPE_WRITE_END], 1);
+        close(fd1[PIPE_WRITE_END]);
+
         if( execvp(*firstCommArr, firstCommArr)){
             printf("Execution of the first/left command failed.\n");
         }
-        printf( "DEBUG: CHECKPOINT 2\n");
     }
     else {
         // set the pipe for the second child
@@ -193,35 +219,39 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
             // will use read end of pipe 2
             close(fd2[PIPE_WRITE_END]);
             dup2(fd2[PIPE_READ_END], 0);
+            close(fd2[PIPE_READ_END]);
             if( execvp(*secondCommArr, secondCommArr)){
                 printf("Execution of the second/right command failed.\n");
             }
-            printf( "DEBUG: CHECKPOINT 3\n");
         }
         // set the pipe for the parent
-        else {
+        // else {
             // will use read end of pipe 1
-            close(fd1[PIPE_WRITE_END]);
-            dup2(fd1[PIPE_READ_END], 0);
+            // close(fd1[PIPE_WRITE_END]);
+            // dup2(fd1[PIPE_READ_END], 0);
 
             // will use the write end of pipe 2
-            close(fd2[PIPE_READ_END]);
-            dup2(fd2[PIPE_WRITE_END], 1);
-            printf( "DEBUG: CHECKPOINT 4\n");
-        }
+            // close(fd2[PIPE_READ_END]);
+            // dup2(fd2[PIPE_WRITE_END], 1);
+        // }
     }
 
-    printf( "DEBUG: CHECKPOINT 5\n");
-    char* buffer[nValue];
-    int readByteCnt;
+    char* buffer[nValue + 1];
+    int readByteCnt = 0;
     if( getpid() == parentPid){
         do {
             // read n bytes & write those bytes to second child
+            close(fd1[PIPE_WRITE_END]);
             readByteCnt = read( fd1[PIPE_READ_END], buffer, nValue);
-            write( fd2[PIPE_WRITE_END], buffer, nValue);
+            buffer[readByteCnt] = '\0';
+            close(fd2[PIPE_READ_END]);
+            write( fd2[PIPE_WRITE_END], buffer, readByteCnt);
         } while (readByteCnt > 0);
+        close(fd1[PIPE_READ_END]);
+        close(fd2[PIPE_WRITE_END]);
+        wait(NULL);
+        wait(NULL);
     }
-    printf( "DEBUG: CHECKPOINT 6\n");
 
     if( getpid() == child1Pid){
         exit(0);
@@ -229,11 +259,6 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
     else if ( getpid() == child2Pid){
         exit(0);
     }
-
-    close(fd1[PIPE_READ_END]);
-    close(fd1[PIPE_WRITE_END]);
-    close(fd2[PIPE_READ_END]);
-    close(fd2[PIPE_WRITE_END]);
 }
 
 
@@ -286,7 +311,6 @@ int main(int argc, char *argv[])
 
 
             if( strcmp( inputLine, "exit") == 0){
-                printf( "DEBUG: Exit entered\n");
                 break;
             }
 
@@ -294,7 +318,6 @@ int main(int argc, char *argv[])
 
             // execute the basic command
             if( flagCompoundCommand == false){
-                printf("DEBUG: basic\n");
 
                 // parse the input into commands & arguments
                 char  *commandArr[64];
@@ -307,7 +330,6 @@ int main(int argc, char *argv[])
 
             // execute the compound command
             else if( flagCompoundCommand == true){
-                printf("DEBUG: compound\n");
 
                 char *commandArr1[64];
                 char *commandArr2[64];
@@ -326,7 +348,6 @@ int main(int argc, char *argv[])
     }
 
     else if( mode == MODE_TAPPED){
-        printf( "DEBUG: TAPPED\n");
         char inputLine[1024];
         
         printf( "isp$ ");
@@ -336,9 +357,7 @@ int main(int argc, char *argv[])
             inputLine[strcspn(inputLine, "\n")] = '\0';
             printf("\n");
 
-
             if( strcmp( inputLine, "exit") == 0){
-                printf( "DEBUG: Exit entered\n");
                 break;
             }
 
@@ -346,7 +365,6 @@ int main(int argc, char *argv[])
 
             // execute the basic command
             if( flagCompoundCommand == false){
-                printf("DEBUG: basic\n");
 
                 // parse the input into commands & arguments
                 char  *commandArr[64];
@@ -359,26 +377,20 @@ int main(int argc, char *argv[])
             // execute the compound command
             else if( flagCompoundCommand == true){
 
-                printf("DEBUG: main checkpoint 0\n");
-
                 char *commandArr1[64];
                 char *commandArr2[64];
                 int statCharCnt = 0;
                 int statReadCnt = 0;
                 int statWriteCnt = 0;
-                printf( "DEBUG: main checkpoint 1\n");
 
                 parseCompoundCommand(inputLine, commandArr1, commandArr2);
                 
-                printf( "DEBUG: main checkpoint 2\n");
                 // execute the command
                 execCompCommTapped( n, commandArr1, commandArr2, statCharCnt, statReadCnt, statWriteCnt);
-                printf( "DEBUG: main checkpoint 3\n");
 
             }
             printf( "isp$ ");
         }
-
         printf( "Exiting program... \n");
         return 0;   
     }

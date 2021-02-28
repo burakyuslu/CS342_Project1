@@ -1,9 +1,14 @@
+// Author: Burak Yigit Uslu
+// CS 342 Project 1
+
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
+
 
 // constants for mode
 const int MODE_NORMAL = 1;
@@ -177,7 +182,7 @@ void execCompCommNormal(char** firstCommArr, char** secondCommArr){
  * Used while in tapped mode.
  * Parent reads and writes n-bytes at a time, where n is an command line argument.
  */
-void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, int statChar, int statRead, int statWrite ){
+void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr){
     pid_t parentPid = getpid();
     pid_t child1Pid;
     pid_t child2Pid;
@@ -224,17 +229,12 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
                 printf("Execution of the second/right command failed.\n");
             }
         }
-        // set the pipe for the parent
-        // else {
-            // will use read end of pipe 1
-            // close(fd1[PIPE_WRITE_END]);
-            // dup2(fd1[PIPE_READ_END], 0);
 
-            // will use the write end of pipe 2
-            // close(fd2[PIPE_READ_END]);
-            // dup2(fd2[PIPE_WRITE_END], 1);
-        // }
     }
+
+    int statCharCnt = 0;
+    int statReadCnt = 0;
+    int statWriteCnt = 0;
 
     char* buffer[nValue + 1];
     int readByteCnt = 0;
@@ -244,8 +244,14 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
             close(fd1[PIPE_WRITE_END]);
             readByteCnt = read( fd1[PIPE_READ_END], buffer, nValue);
             buffer[readByteCnt] = '\0';
+
+
             close(fd2[PIPE_READ_END]);
             write( fd2[PIPE_WRITE_END], buffer, readByteCnt);
+
+            statCharCnt += readByteCnt;
+            statReadCnt++;
+            statWriteCnt++;
         } while (readByteCnt > 0);
         close(fd1[PIPE_READ_END]);
         close(fd2[PIPE_WRITE_END]);
@@ -259,6 +265,11 @@ void execCompCommTapped(int nValue, char** firstCommArr, char** secondCommArr, i
     else if ( getpid() == child2Pid){
         exit(0);
     }
+
+    printf("--- Command Execution Statistics ---\n");
+    printf("character-count:%d\n", statCharCnt);
+    printf("read-call-count:%d\n", statReadCnt);
+    printf("write-call-count:%d\n", statWriteCnt);
 }
 
 
@@ -338,11 +349,8 @@ int main(int argc, char *argv[])
 
                 // execute the command
                 execCompCommNormal( commandArr1, commandArr2);
-
             }
-
         }
-
         printf( "Exiting program... \n");
         return 0;
     }
@@ -353,6 +361,7 @@ int main(int argc, char *argv[])
         printf( "isp$ ");
         // take inputs from user as long as he did not initiate to exit
         while( true){
+
             fgets(inputLine, 1024, stdin);
             inputLine[strcspn(inputLine, "\n")] = '\0';
             printf("\n");
@@ -379,15 +388,11 @@ int main(int argc, char *argv[])
 
                 char *commandArr1[64];
                 char *commandArr2[64];
-                int statCharCnt = 0;
-                int statReadCnt = 0;
-                int statWriteCnt = 0;
 
                 parseCompoundCommand(inputLine, commandArr1, commandArr2);
-                
-                // execute the command
-                execCompCommTapped( n, commandArr1, commandArr2, statCharCnt, statReadCnt, statWriteCnt);
 
+                // execute the command
+                execCompCommTapped( n, commandArr1, commandArr2);
             }
             printf( "isp$ ");
         }
